@@ -1,0 +1,221 @@
+# Parallel computing: how a GPU thinks, in a JupyterLab of your own. There is no GPU here.
+# The lab teaches the model a GPU is built on, with NumPy, Python's multiprocessing and a few
+# small scripts, so every result is the same each time you run it.
+#
+# Your copy is the only thing you may use, and it is the only thing you can reach: this lab
+# has no way out to the internet, so nothing you try can touch anybody else's machine.
+#
+# Open JupyterLab from the lab's page. The work folder holds start.ipynb, a notebook that runs
+# the scripts, and steps/, six short scripts that each do one idea: vectors.py (one loop or
+# one operation), chunks.py (a job split between workers), amdahl.py (the limit on a speed-up),
+# kernel.py (a GPU launch, simulated), transfer.py (moving data against computing) and
+# coalesce.py (which memory a group of threads touches). The terminal beside the lab reaches
+# the same Python with docker exec, for example
+#   docker exec jupyter python3 steps/vectors.py
+#
+# Hand in a short change of your own to one script (a different number of chunks, a different
+# share that cannot be split, a different launch size) and a sentence on what moved and why.
+#
+# The image runs as its own unprivileged account and needs no capabilities. JupyterLab asks
+# for no token, because the platform's own door in front of it already knows who you are; do
+# not run it like this anywhere else. Nothing is saved: download your work before you stop
+# the lab, because stopping it forgets every file you made.
+
+services:
+  jupyter:
+    image: jupyter/scipy-notebook:2023-10-20
+    user: "1000:100"
+    expose: ["8888"]
+    working_dir: /home/jovyan/work
+    environment:
+      HOME: /home/jovyan
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+    entrypoint:
+      - sh
+      - -c
+      - |
+        mkdir -p /home/jovyan/work/steps /tmp/lab
+        cd /home/jovyan/work
+        cat > steps/vectors.py <<'PY'
+        import numpy as np
+
+        # The same sum of squares, 1 squared plus 2 squared and so on up to 1000 squared.
+        n = 1000
+
+        total = 0
+        loop_operations = 0
+        for i in range(1, n + 1):
+            total = total + i * i
+            loop_operations = loop_operations + 2
+
+        numbers = np.arange(1, n + 1, dtype=np.int64)
+        together = int(np.dot(numbers, numbers))
+
+        print("python loop result:", total)
+        print("one numpy operation result:", together)
+        print("the two results are equal:", total == together)
+        print("python-level operations in the loop:", loop_operations)
+        print("python-level operations with numpy: 1")
+        PY
+        cat > steps/chunks.py <<'PY'
+        from multiprocessing import Pool
+
+
+        def partial_sum(chunk):
+            return sum(chunk)
+
+
+        if __name__ == "__main__":
+            data = list(range(1, 41))
+            chunks = [data[0:10], data[10:20], data[20:30], data[30:40]]
+            with Pool(2) as pool:
+                partials = pool.map(partial_sum, chunks)
+            for number, value in enumerate(partials):
+                print("chunk", number, "partial sum:", value)
+            print("total of the partial sums:", sum(partials))
+            print("sum done in one piece:", sum(data))
+        PY
+        cat > steps/amdahl.py <<'PY'
+        # Speed-up from n workers when a share s of the work cannot be split:
+        # speed-up = 1 / (s + (1 - s) / n)
+        workers = [1, 2, 4, 8]
+        print("share that cannot be split | 1 worker | 2 workers | 4 workers | 8 workers")
+        for s in [0.10, 0.25, 0.50]:
+            cells = []
+            for n in workers:
+                cells.append(round(1 / (s + (1 - s) / n), 2))
+            print(int(s * 100), "percent:", cells)
+        print("with 10 percent serial, even endless workers give at most", round(1 / 0.10, 1))
+        PY
+        cat > steps/kernel.py <<'PY'
+        # A GPU kernel launch, simulated in plain Python. The GPU is not here; the model is.
+        a = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        b = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+        n = len(a)
+        c = [0] * n
+
+        block_dim = 4
+        grid_dim = 3
+
+
+        def kernel(block_idx, thread_idx):
+            i = block_idx * block_dim + thread_idx
+            if i < n:
+                c[i] = a[i] + b[i]
+                return str(i) + " adds a[" + str(i) + "] and b[" + str(i) + "]"
+            return str(i) + " is past the end, does nothing"
+
+
+        print("launch:", grid_dim, "blocks of", block_dim, "threads")
+        for block_idx in range(grid_dim):
+            for thread_idx in range(block_dim):
+                print("block", block_idx, "thread", thread_idx, "-> global index", kernel(block_idx, thread_idx))
+        print("result:", c)
+        PY
+        cat > steps/transfer.py <<'PY'
+        # Arithmetic only: a made-up device that moves 500 gigabytes a second
+        # and does 10 teraflops (10 million million sums) a second.
+        bandwidth = 500 * 10**9
+        rate = 10 * 10**12
+        float_bytes = 4
+
+
+        def report(name, moved, sums):
+            memory_us = moved / bandwidth * 10**6
+            compute_us = sums / rate * 10**6
+            print(name)
+            print("  bytes moved:", moved)
+            print("  sums done:", sums)
+            print("  time to move the bytes, microseconds:", round(memory_us, 1))
+            print("  time to do the sums, microseconds:", round(compute_us, 1))
+            if memory_us > compute_us:
+                print("  limited by: memory")
+            else:
+                print("  limited by: compute")
+
+
+        n = 10_000_000
+        report("vector add, 10 million elements (read 2 vectors, write 1)", 3 * n * float_bytes, n)
+
+        m = 1000
+        report("matrix multiply, 1000 by 1000 (read 2 matrices, write 1)",
+               3 * m * m * float_bytes, 2 * m * m * m)
+        PY
+        cat > steps/coalesce.py <<'PY'
+        # 8 threads each read one 4-byte number. Memory is fetched in lines of 32 bytes.
+        threads = 8
+        size = 4
+        line = 32
+
+
+        def show(name, step):
+            addresses = [t * step * size for t in range(threads)]
+            lines = sorted(set(a // line for a in addresses))
+            print(name)
+            print("  addresses touched:", addresses)
+            print("  32-byte lines fetched:", len(lines), lines)
+
+
+        show("each thread reads the next element (stride 1)", 1)
+        show("each thread reads every 8th element (stride 8)", 8)
+        PY
+        cat > /tmp/lab/make.py <<'PY'
+        import json
+
+
+        def md(text):
+            return {"cell_type": "markdown", "metadata": {}, "source": text}
+
+
+        def code(text):
+            return {"cell_type": "code", "metadata": {}, "source": text, "outputs": [],
+                    "execution_count": None}
+
+
+        cells = [
+            md("# How a GPU thinks, without a GPU\n\nThere is no GPU in this lab. Each cell below runs "
+               "one script from the steps folder, and each script shows one idea a GPU is built on. "
+               "Run each cell with Shift and Enter, and change the numbers in the scripts to see what moves."),
+            md("## One operation on many numbers"),
+            code("%run steps/vectors.py"),
+            md("## A job split between workers"),
+            code("%run steps/chunks.py"),
+            md("## The limit on a speed-up"),
+            code("%run steps/amdahl.py"),
+            md("## A launch of blocks of threads, simulated"),
+            code("%run steps/kernel.py"),
+            md("## Moving data against computing"),
+            code("%run steps/transfer.py"),
+            md("## Which memory a group of threads touches"),
+            code("%run steps/coalesce.py"),
+            md("## Your own change\n\nOpen one script in the file list, change one number and run it "
+               "again. Write a sentence on what moved and why."),
+        ]
+        book = {"cells": cells, "nbformat": 4, "nbformat_minor": 5,
+                "metadata": {"kernelspec": {"name": "python3", "display_name": "Python 3 (ipykernel)",
+                                            "language": "python"},
+                             "language_info": {"name": "python"}}}
+        with open("start.ipynb", "w") as out:
+            json.dump(book, out, indent=1)
+        PY
+        python3 /tmp/lab/make.py
+        exec jupyter lab --no-browser --ip=0.0.0.0 --port=8888 \
+          --ServerApp.root_dir=/home/jovyan/work \
+          --IdentityProvider.token= --ServerApp.password= \
+          '--ServerApp.allow_origin=*' --ServerApp.allow_remote_access=True \
+          --LabApp.check_for_updates_class=jupyterlab.NeverCheckForUpdate \
+          --LabApp.news_url=None
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8888/api', timeout=3)"]
+      interval: 3s
+      timeout: 5s
+      retries: 60
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    labels:
+      lab.title: JupyterLab
+      lab.open: "8888"

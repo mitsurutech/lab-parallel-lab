@@ -1,0 +1,6 @@
+# Publishes the lab on your own machine only (127.0.0.1), for running it outside the platform:
+#   docker compose -f compose.yaml -f local.yaml up
+# then open http://127.0.0.1:8888/lab. Nothing here asks for a password, so keep it on 127.0.0.1.
+services:
+  jupyter:
+    ports: ["127.0.0.1:8888:8888"]

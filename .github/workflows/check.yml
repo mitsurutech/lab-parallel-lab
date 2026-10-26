@@ -1,0 +1,13 @@
+name: check
+
+on:
+  push:
+  pull_request:
+
+# Checks that compose.yaml is a valid Docker Compose file.
+jobs:
+  lab:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose -f compose.yaml -f local.yaml config --quiet
