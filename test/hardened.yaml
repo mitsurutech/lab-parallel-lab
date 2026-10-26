@@ -1,0 +1,19 @@
+# What the platform's runner does to every service of a lab (code-runner's
+# LabServiceArgs), so a lab that passes here is one that starts there. Used by
+# check.sh only: the lab's own compose file may not say any of this.
+x-hardened: &hardened
+  cap_drop: [ALL]
+  # Given back to a service that may run as root, and nothing else.
+  cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID, NET_BIND_SERVICE, KILL]
+  security_opt: [no-new-privileges]
+  deploy:
+    resources:
+      limits:
+        pids: 256
+  networks: [lab]
+  restart: "no"
+
+networks:
+  lab:
+    # No way out, as on the platform: an image that needs the internet at start fails here.
+    internal: true

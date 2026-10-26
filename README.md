@@ -1,5 +1,7 @@
 # Parallel computing lab with Docker Compose: how a GPU thinks, with NumPy and multiprocessing. There is no GPU
 
+[English](README.md) | [Français](README.fr.md) | [Español](README.es.md) | [日本語](README.ja.md) | [Deutsch](README.de.md)
+
 [![check](https://github.com/mitsurutech/lab-parallel-lab/actions/workflows/check.yml/badge.svg)](https://github.com/mitsurutech/lab-parallel-lab/actions/workflows/check.yml)
 
 A ready-made lab for classrooms, from the [MitsuruTech Learning Platform](https://mitsurutech.co.uk/learning), where schools, colleges and universities give every student their own databases, containers and terminal in the browser. It is the model a GPU is built on, with NumPy, Python multiprocessing and a few small scripts, so every result is the same each time. There is no GPU in the lab.
@@ -33,6 +35,14 @@ Open <http://127.0.0.1:8888/lab>. `local.yaml` publishes ports on `127.0.0.1` on
 ## What does not work in a lab
 
 The lab has no way out to the internet, so nothing can be installed or downloaded into it. **Nothing is saved**: stopping the lab forgets every file, so a student downloads their work before they stop it. The comment at the top of `compose.yaml` says what the lab is and what it is not.
+
+## Checking the lab
+
+`test/check.sh` starts the lab the way the platform's runner starts every service (all capabilities dropped, `no-new-privileges`, a process limit, memory limits, and no way out to the internet) and then checks that the lab does what its compose file says. It needs Docker and runs on every push, which is the badge at the top.
+
+```bash
+test/check.sh
+```
 
 ## Licence
 

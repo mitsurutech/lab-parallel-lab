@@ -1,0 +1,4 @@
+# The tools the platform's terminal has (code-runner's Dockerfile.workbench), so a lab is
+# checked with what a student would type with.
+FROM alpine:3.21
+RUN apk add --no-cache curl bash python3

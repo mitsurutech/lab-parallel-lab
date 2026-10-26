@@ -4,10 +4,10 @@ on:
   push:
   pull_request:
 
-# Checks that compose.yaml is a valid Docker Compose file.
+# Starts the lab the way the platform's runner does and checks it.
 jobs:
   lab:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: docker compose -f compose.yaml -f local.yaml config --quiet
+      - run: test/check.sh
